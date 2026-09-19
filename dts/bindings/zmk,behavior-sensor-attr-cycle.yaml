@@ -9,9 +9,12 @@ include: one_param.yaml
 
 properties:
   sensor_device:
-    required: true
     type: phandle
-    description: The target sensor device to send set_attr commands to.
+    description: >
+      The target sensor device to send set_attr commands to. Optional, so that
+      the same behavior node can be declared on every part of a split keyboard
+      while only the part physically holding the sensor names it. Parts without
+      it keep the index in step and do nothing else.
   values:
     required: true
     type: array

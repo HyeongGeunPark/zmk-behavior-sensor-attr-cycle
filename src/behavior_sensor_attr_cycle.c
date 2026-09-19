@@ -88,6 +88,10 @@ static void load_work_callback(struct k_work *work) {
     const struct device *dev = data->dev;
     const struct behavior_sensor_attr_cycle_config *config = dev->config;
 
+    if (config->sensor_device == NULL) {
+        return;
+    }
+
     struct sensor_value val = { val1: config->values[data->state.index], val2: 0 };
     sensor_attr_set(config->sensor_device, SENSOR_CHAN_ALL, config->attr, &val);
 }
@@ -113,8 +117,25 @@ static int on_keymap_binding_pressed(struct zmk_behavior_binding *binding,
     struct behavior_sensor_attr_cycle_data *data = dev->data;
     const struct behavior_sensor_attr_cycle_config *config = dev->config;
 
-    // Update the index, then send the new value to the sensor
-    data->state.index = (data->state.index + binding->param1) % config->length;
+    // Update the index, then send the new value to the sensor.
+    //
+    // param1 is unsigned, so a "previous" binding of -1 arrives as 0xFFFFFFFF.
+    // Reading it back as signed and correcting a negative remainder keeps
+    // cycling symmetric; the original expression only worked going forwards.
+    const int32_t step = (int32_t)binding->param1;
+    int32_t index = ((int32_t)data->state.index + step) % (int32_t)config->length;
+    if (index < 0) {
+        index += config->length;
+    }
+    data->state.index = (uint8_t)index;
+
+    // With GLOBAL locality this runs on every part of a split, but only the
+    // one holding the sensor has a device to talk to. The others still track
+    // the index so the parts do not drift apart.
+    if (config->sensor_device == NULL) {
+        return 0;
+    }
+
     struct sensor_value val = { val1: config->values[data->state.index], val2: 0 };
     sensor_attr_set(config->sensor_device, SENSOR_CHAN_ALL, config->attr, &val);
 
@@ -134,7 +155,7 @@ static int on_keymap_binding_released(struct zmk_behavior_binding *binding,
 }
 
 static const struct behavior_driver_api behavior_sensor_attr_cycle_driver_api = {
-    .locality = BEHAVIOR_LOCALITY_EVENT_SOURCE,
+    .locality = BEHAVIOR_LOCALITY_GLOBAL,
     .binding_pressed = on_keymap_binding_pressed,
     .binding_released = on_keymap_binding_released,
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
@@ -145,7 +166,7 @@ static const struct behavior_driver_api behavior_sensor_attr_cycle_driver_api = 
 #define CYCLE_INST(n)                                                                              \
     static struct behavior_sensor_attr_cycle_data data##n = {};                                    \
     static const struct behavior_sensor_attr_cycle_config config##n = {                            \
-        .sensor_device =  DEVICE_DT_GET(DT_INST_PHANDLE(n, sensor_device)),                        \
+        .sensor_device = COND_CODE_1(DT_INST_NODE_HAS_PROP(n, sensor_device), (DEVICE_DT_GET(DT_INST_PHANDLE(n, sensor_device))), (NULL)),                  \
         .length = DT_PROP_LEN(DT_DRV_INST(n), values),                                             \
         .values = DT_PROP(DT_DRV_INST(n), values),                                                 \
         .attr = DT_PROP(DT_DRV_INST(n), attr),                                                     \

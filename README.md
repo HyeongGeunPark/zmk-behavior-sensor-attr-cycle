@@ -2,6 +2,20 @@
 
 This behaviour cycles through a list of values and sends the selected value to a sensor driver attribute. I made it to cycle through DPI values on the Ploopy mouse, but it may be able to do more than that.
 
+## Fork changes
+
+Forked for a split keyboard whose sensor lives on one half while the keys that
+change it live on the other.
+
+- Locality is `BEHAVIOR_LOCALITY_GLOBAL` instead of `BEHAVIOR_LOCALITY_EVENT_SOURCE`,
+  so a key on either half reaches the half that owns the sensor.
+- `sensor_device` is optional. The same behavior node can then be declared once
+  for every part of the split, with only the part holding the sensor naming it;
+  the others keep the index in step and do nothing else. Previously the phandle
+  was required and builds without the sensor did not link.
+- Backwards cycling works. `param1` is unsigned, so a "previous" binding of -1
+  arrived as 0xFFFFFFFF and the index only ever moved forwards.
+
 ## Features
 
 - Can persist values to storage and reload them at startup.
